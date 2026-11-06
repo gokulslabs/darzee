@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+api/.env
+node_modules/
+dist/
+.bundle/
+android/.gradle/
+android/app/build/
+android/build/
+ios/Pods/
+ios/build/
+*.xcuserstate
+.DS_Store
