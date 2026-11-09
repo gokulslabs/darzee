@@ -37,6 +37,12 @@ export function SettingsPage() {
           <button type="button" className={unit === 'cm' ? 'on' : ''} onClick={() => setUnit('cm')}>Cm</button>
         </div>
       </div>
+      <button type="button" className="profile-row" onClick={() => {
+        sessionStorage.clear()
+        window.location.reload()
+      }}>
+        <span>Log out</span>
+      </button>
     </section>
   )
 }
