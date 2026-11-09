@@ -1,3 +1,6 @@
+import { createReadStream } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
+import { extname, join, normalize } from 'node:path'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { jobSheetPdf } from './pdf.ts'
 import {
@@ -23,6 +26,7 @@ import {
 } from './store.ts'
 
 const port = Number(process.env.PORT) || 4000
+const webRoot = new URL('../../pwa/dist/', import.meta.url)
 
 function sendPdf(res: ServerResponse, filename: string, bytes: Buffer): void {
   res.writeHead(200, {
@@ -75,6 +79,28 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = pathOf(req)
   const parts = path.split('/').filter(Boolean)
   const method = req.method ?? 'GET'
+
+  const apiPath = path === '/health' || path === '/customers' || path.startsWith('/customers/')
+    || path === '/orders' || path.startsWith('/orders/') || path === '/staff'
+    || path === '/inventory' || path.startsWith('/inventory/') || path.startsWith('/imports/')
+  if (method === 'GET' && !apiPath) {
+    const relative = normalize(decodeURIComponent(path)).replace(/^([/\\]|\.\.(?:[/\\]|$))+/, '')
+    let filePath = new URL(relative || 'index.html', webRoot)
+    try {
+      if ((await stat(filePath)).isDirectory()) filePath = new URL(join(relative, 'index.html'), webRoot)
+      const bytes = await readFile(filePath)
+      const contentType: Record<string, string> = {
+        '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8',
+        '.ico': 'image/x-icon', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json',
+        '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.woff': 'font/woff', '.woff2': 'font/woff2',
+      }
+      res.writeHead(200, { 'Content-Type': contentType[extname(filePath.pathname)] ?? 'application/octet-stream' })
+      res.end(bytes)
+    } catch {
+      createReadStream(new URL('index.html', webRoot)).pipe(res)
+    }
+    return
+  }
 
   if (method === 'GET' && path === '/health') {
     await listCustomers()

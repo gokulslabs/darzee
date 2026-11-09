@@ -1,0 +1,9 @@
+{
+  "name": "darzee-deployment",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix api ci && npm --prefix pwa ci && npm --prefix pwa run build",
+    "start": "node --experimental-strip-types api/src/server.ts"
+  }
+}

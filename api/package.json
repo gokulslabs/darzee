@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node --experimental-strip-types --env-file=.env src/server.ts",
+    "start": "node --experimental-strip-types src/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
