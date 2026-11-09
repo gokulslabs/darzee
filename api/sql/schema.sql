@@ -3,6 +3,7 @@ create table if not exists public.customers (
   name text not null,
   phone text not null,
   city text not null,
+  book_no text,
   created_at timestamptz not null default now()
 );
 
@@ -20,6 +21,16 @@ create table if not exists public.measurements (
   length double precision not null,
   note text not null default '',
   recorded_on date not null
+);
+
+-- Preserves custom label/value measurements imported from the legacy billing app.
+create table if not exists public.customer_measurement_sets (
+  id text primary key,
+  source_customer_id text not null,
+  customer_id text not null references public.customers (id) on delete cascade,
+  garment text not null,
+  measurements jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.orders (
@@ -50,5 +61,43 @@ create index if not exists payments_order_id_idx on public.payments (order_id);
 
 alter table public.customers enable row level security;
 alter table public.measurements enable row level security;
+alter table public.customer_measurement_sets enable row level security;
 alter table public.orders enable row level security;
 alter table public.payments enable row level security;
+
+alter table public.customers add column if not exists user_id uuid references auth.users (id) on delete cascade;
+alter table public.measurements add column if not exists user_id uuid references auth.users (id) on delete cascade;
+alter table public.customer_measurement_sets add column if not exists user_id uuid references auth.users (id) on delete cascade;
+alter table public.orders add column if not exists user_id uuid references auth.users (id) on delete cascade;
+alter table public.payments add column if not exists user_id uuid references auth.users (id) on delete cascade;
+
+create index if not exists customers_user_id_idx on public.customers (user_id);
+create index if not exists measurements_user_id_idx on public.measurements (user_id);
+create index if not exists customer_measurement_sets_user_id_idx on public.customer_measurement_sets (user_id);
+create index if not exists orders_user_id_idx on public.orders (user_id);
+create index if not exists payments_user_id_idx on public.payments (user_id);
+
+create policy customers_owner on public.customers
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy measurements_owner on public.measurements
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy customer_measurement_sets_owner on public.customer_measurement_sets
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy orders_owner on public.orders
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy payments_owner on public.payments
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());

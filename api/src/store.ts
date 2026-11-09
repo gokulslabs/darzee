@@ -66,6 +66,12 @@ type CustomerRow = {
   landmark?: string | null
   created_at?: string | null
   measurements: MeasurementRow[] | null
+  custom_measurement_sets?: Array<{
+    id: string
+    source_customer_id: string
+    garment: string
+    measurements: Array<{ label: string; value: string }>
+  }> | null
 }
 
 type PaymentRow = {
@@ -98,7 +104,7 @@ type OrderRow = {
 
 const MEASUREMENT_COLUMNS =
   'id, label, chest, waist, hip, shoulder, sleeve, neck, inseam, length, seat, calf, bottom_bell, biceps, hand_right, hand_left, unit, note, recorded_on'
-const CUSTOMER_SELECT = `id, name, phone, city, age, gender, email, birth_date, landmark, created_at, measurements (${MEASUREMENT_COLUMNS})`
+const CUSTOMER_SELECT = `id, name, phone, city, age, gender, email, birth_date, landmark, created_at, measurements (${MEASUREMENT_COLUMNS}), custom_measurement_sets:customer_measurement_sets (id, source_customer_id, garment, measurements)`
 const ORDER_SELECT =
   'id, order_no, customer_id, garment, due_date, fitting_date, price, stage, notes, work_type, urgent, item_status, assignee, stitch_note, cloth, sale_mode, payments (id, amount, paid_on, method, note)'
 
@@ -109,9 +115,15 @@ if (!url || !serviceKey) {
   throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in api/.env')
 }
 
+const shopUserId = process.env.SHOP_USER_ID ?? ''
+
 const supabase: SupabaseClient = createClient(url, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
+
+function owned<T extends Record<string, unknown>>(row: T): T & { user_id?: string } {
+  return shopUserId ? { ...row, user_id: shopUserId } : row
+}
 
 function num(value: number | string): number {
   const parsed = typeof value === 'number' ? value : Number(value)
@@ -157,7 +169,73 @@ function mapCustomer(row: CustomerRow): Customer {
     landmark: row.landmark ?? '',
     createdAt: row.created_at ? String(row.created_at).slice(0, 10) : undefined,
     measurements,
+    customMeasurementSets: (row.custom_measurement_sets ?? []).map(set => ({
+      id: set.id,
+      sourceCustomerId: set.source_customer_id,
+      garment: set.garment,
+      measurements: set.measurements,
+    })),
   }
+}
+
+export async function importCustomerMeasurementSets(input: unknown): Promise<{ customers: number; measurementSets: number; measurementValues: number }> {
+  if (!input || typeof input !== 'object') throw new StoreError(400, 'Send a customer measurement export.')
+  const payload = input as { format?: unknown; customers?: unknown }
+  if (payload.format !== 'darzee-customer-measurements-v1' || !Array.isArray(payload.customers)) {
+    throw new StoreError(400, 'This is not a supported customer measurement export.')
+  }
+  let customers = 0
+  let measurementSets = 0
+  let measurementValues = 0
+  for (const item of payload.customers) {
+    if (!item || typeof item !== 'object') continue
+    const source = item as { sourceCustomerId?: unknown; name?: unknown; phone?: unknown; address?: unknown; bookNo?: unknown; measurementSets?: unknown }
+    const sourceCustomerId = String(source.sourceCustomerId ?? '').trim()
+    const name = String(source.name ?? '').trim()
+    const phone = String(source.phone ?? '').trim()
+    const measurementSetsInput = Array.isArray(source.measurementSets) ? source.measurementSets : []
+    if (!sourceCustomerId || !name) continue
+    const customerId = `lc_${sourceCustomerId}`
+    const match = await supabase.from('customers').select('id').eq('id', customerId).maybeSingle()
+    readError(match.error, 'Customers could not be matched.')
+    if (!match.data) {
+      const inserted = await supabase.from('customers').insert(owned({
+        id: customerId,
+        name,
+        phone,
+        city: String(source.address ?? '').trim(),
+        book_no: String(source.bookNo ?? '').trim() || null,
+        created_at: new Date().toISOString(),
+      }))
+      readError(inserted.error, 'A customer could not be imported.')
+      customers += 1
+    }
+    for (let index = 0; index < measurementSetsInput.length; index += 1) {
+      const raw = measurementSetsInput[index]
+      if (!raw || typeof raw !== 'object') continue
+      const set = raw as { garment?: unknown; measurements?: unknown }
+      const garment = String(set.garment ?? '').trim() || 'Unspecified garment'
+      const rows = Array.isArray(set.measurements) ? set.measurements : []
+      const measurements = rows.flatMap(row => {
+        if (!row || typeof row !== 'object') return []
+        const pair = row as { label?: unknown; value?: unknown }
+        const label = String(pair.label ?? '').trim()
+        const value = String(pair.value ?? '').trim()
+        return label && value ? [{ label, value }] : []
+      })
+      const upsert = await supabase.from('customer_measurement_sets').upsert(owned({
+        id: `lc_${sourceCustomerId}_${index + 1}`,
+        source_customer_id: sourceCustomerId,
+        customer_id: customerId,
+        garment,
+        measurements,
+      }), { onConflict: 'id' })
+      readError(upsert.error, 'A customer measurement set could not be imported.')
+      measurementSets += 1
+      measurementValues += measurements.length
+    }
+  }
+  return { customers, measurementSets, measurementValues }
 }
 
 function mapOrder(row: OrderRow): OrderView {
@@ -304,13 +382,13 @@ async function insertBook(seed: ReturnType<typeof createSeed>): Promise<void> {
     })),
   )
 
-  const insertedCustomers = await supabase.from('customers').insert(customers)
+  const insertedCustomers = await supabase.from('customers').insert(customers.map(row => owned(row)))
   readError(insertedCustomers.error, 'The sample customers could not be saved.')
-  const insertedMeasurements = await supabase.from('measurements').insert(measurements)
+  const insertedMeasurements = await supabase.from('measurements').insert(measurements.map(row => owned(row)))
   readError(insertedMeasurements.error, 'The sample measurements could not be saved.')
-  const insertedOrders = await supabase.from('orders').insert(orders)
+  const insertedOrders = await supabase.from('orders').insert(orders.map(row => owned(row)))
   readError(insertedOrders.error, 'The sample orders could not be saved.')
-  const insertedPayments = await supabase.from('payments').insert(payments)
+  const insertedPayments = await supabase.from('payments').insert(payments.map(row => owned(row)))
   readError(insertedPayments.error, 'The sample payments could not be saved.')
 }
 
@@ -344,13 +422,13 @@ export async function ensureSeed(): Promise<void> {
   const staffCount = await supabase.from('staff').select('id', { count: 'exact', head: true })
   readError(staffCount.error, 'Staff could not be read.')
   if ((staffCount.count ?? 0) === 0) {
-    const inserted = await supabase.from('staff').insert(seedStaff())
+    const inserted = await supabase.from('staff').insert(seedStaff().map(row => owned(row)))
     readError(inserted.error, 'Staff could not be saved.')
   }
   const rollCount = await supabase.from('inventory').select('id', { count: 'exact', head: true })
   readError(rollCount.error, 'Cloth stock could not be read.')
   if ((rollCount.count ?? 0) === 0) {
-    const inserted = await supabase.from('inventory').insert(seedRolls().map(roll => ({ ...roll })))
+    const inserted = await supabase.from('inventory').insert(seedRolls().map(roll => owned({ ...roll })))
     readError(inserted.error, 'Cloth stock could not be saved.')
   }
   const owner = await supabase.from('staff').update({ name: 'Sridevi' }).eq('role', 'owner')
@@ -367,7 +445,7 @@ async function ensureProductSale(): Promise<void> {
   const customer = await supabase.from('customers').select('id').eq('name', 'Meher Kapoor').maybeSingle()
   readError(customer.error, 'The product sale customer could not be read.')
   if (!customer.data) return
-  const inserted = await supabase.from('orders').insert({
+  const inserted = await supabase.from('orders').insert(owned({
     id: 'o_sale_ivory',
     order_no: 'TL-2101',
     customer_id: (customer.data as { id: string }).id,
@@ -384,7 +462,7 @@ async function ensureProductSale(): Promise<void> {
     stitch_note: '',
     cloth: 'Ivory silk',
     sale_mode: 'product',
-  })
+  }))
   readError(inserted.error, 'The ready cloth sale could not be saved.')
   const rolls = await listRolls()
   const roll = rolls.find(item => item.sku === 'CL-104')
@@ -423,9 +501,16 @@ export async function jobSheetDocument(id: string): Promise<{ filename: string; 
 }
 
 export async function listCustomers(): Promise<Customer[]> {
-  const result = await supabase.from('customers').select(CUSTOMER_SELECT).order('name')
-  readError(result.error, 'The floor book could not be read.')
-  return ((result.data ?? []) as CustomerRow[]).map(mapCustomer)
+  const customers: Customer[] = []
+  const pageSize = 500
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await supabase.from('customers').select(CUSTOMER_SELECT)
+      .order('name').order('id').range(offset, offset + pageSize - 1)
+    readError(result.error, 'The floor book could not be read.')
+    const page = (result.data ?? []) as CustomerRow[]
+    customers.push(...page.map(mapCustomer))
+    if (page.length < pageSize) return customers
+  }
 }
 
 export async function getCustomer(id: string): Promise<Customer> {
@@ -516,7 +601,7 @@ function cleanMeasurement(input: unknown): Omit<Measurement, 'id' | 'recordedOn'
 }
 
 async function insertMeasurement(customerId: string, measurement: Omit<Measurement, 'id' | 'recordedOn'>): Promise<void> {
-  const result = await supabase.from('measurements').insert({
+  const result = await supabase.from('measurements').insert(owned({
     id: `m_${crypto.randomUUID().slice(0, 8)}`,
     customer_id: customerId,
     label: measurement.label,
@@ -537,7 +622,7 @@ async function insertMeasurement(customerId: string, measurement: Omit<Measureme
     hand_right: measurement.handRight,
     hand_left: measurement.handLeft,
     unit: measurement.unit,
-  })
+  }))
   readError(result.error, 'The measurement could not be saved.')
 }
 
@@ -555,7 +640,7 @@ export async function createCustomer(input: {
   const person = cleanPerson(input)
   const measurement = cleanMeasurement(input.measurement)
   const id = `c_${crypto.randomUUID().slice(0, 8)}`
-  const inserted = await supabase.from('customers').insert({ id, ...person })
+  const inserted = await supabase.from('customers').insert(owned({ id, ...person }))
   readError(inserted.error, 'The customer could not be saved.')
   if (measurement) await insertMeasurement(id, measurement)
   return getCustomer(id)
@@ -605,14 +690,14 @@ export async function recordPayment(
   if (!PAY_METHODS.includes(method as PayMethod)) {
     throw new StoreError(400, 'Choose a payment method.')
   }
-  const inserted = await supabase.from('payments').insert({
+  const inserted = await supabase.from('payments').insert(owned({
     id: `p_${crypto.randomUUID().slice(0, 8)}`,
     order_id: id,
     amount,
     paid_on: todayIso(),
     method,
     note: String(input.note ?? '').trim(),
-  })
+  }))
   readError(inserted.error, 'The payment could not be saved.')
   return getOrder(id)
 }
@@ -656,14 +741,14 @@ export async function moveStock(id: string, input: { direction?: unknown; qty?: 
   if (next < 0) throw new StoreError(400, 'That is more cloth than is on the roll.')
   const updated = await supabase.from('inventory').update({ qty: next }).eq('id', id)
   readError(updated.error, 'The roll could not be updated.')
-  const moved = await supabase.from('stock_moves').insert({
+  const moved = await supabase.from('stock_moves').insert(owned({
     id: `mv_${crypto.randomUUID().slice(0, 8)}`,
     sku: roll.sku,
     direction,
     qty,
     note: String(input.note ?? '').trim(),
     moved_on: todayIso(),
-  })
+  }))
   readError(moved.error, 'The stock move could not be saved.')
   return { ...roll, qty: next }
 }
@@ -733,7 +818,7 @@ export async function createOrder(input: Record<string, unknown>): Promise<Order
         ),
       }
     : undefined
-  const inserted = await supabase.from('orders').insert({
+  const inserted = await supabase.from('orders').insert(owned({
     id,
     order_no: orderNo,
     customer_id: customerId,
@@ -750,7 +835,7 @@ export async function createOrder(input: Record<string, unknown>): Promise<Order
     stitch_note: stitchNote,
     cloth: String(input.cloth ?? ''),
     sale_mode: saleMode,
-  })
+  }))
   readError(inserted.error, 'The order could not be saved.')
   const advance = Math.round(Number(input.advance ?? 0))
   if (advance > 0) await recordPayment(id, { amount: advance, method: input.method ?? 'Cash', note: 'Advance' })

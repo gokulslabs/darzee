@@ -52,6 +52,17 @@ export function CustomerDetail() {
           {set.note ? <p>{set.note}</p> : null}
         </article>
       ))}
+      {(customer.customMeasurementSets ?? []).map(set => (
+        <article className="card section" key={set.id}>
+          <p className="kicker">Imported stitching measurements</p>
+          <h2>{set.garment}</h2>
+          <div className="measurement-list">
+            {set.measurements.map((item, index) => (
+              <p key={`${item.label}-${index}`}><b>{item.label}</b> · {item.value}</p>
+            ))}
+          </div>
+        </article>
+      ))}
       <section className="section">
         <h2>Orders</h2>
         {ownOrders.map(order => (

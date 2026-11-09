@@ -35,6 +35,13 @@ export type Measurement = {
   recordedOn: string
 }
 
+export type CustomMeasurementSet = {
+  id: string
+  sourceCustomerId: string
+  garment: string
+  measurements: Array<{ label: string; value: string }>
+}
+
 export type Customer = {
   id: string
   name: string
@@ -47,6 +54,7 @@ export type Customer = {
   landmark?: string
   createdAt?: string
   measurements: Measurement[]
+  customMeasurementSets?: CustomMeasurementSet[]
 }
 
 export type StaffMember = { id: string; name: string; role: StaffRole }

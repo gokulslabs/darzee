@@ -9,6 +9,7 @@ import {
   getOrder,
   jobSheetDocument,
   listCustomers,
+  importCustomerMeasurementSets,
   listOrders,
   assignOrder,
   createOrder,
@@ -82,6 +83,10 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   }
   if (method === 'GET' && path === '/customers') {
     send(res, 200, await listCustomers())
+    return
+  }
+  if (method === 'POST' && path === '/imports/customer-measurements') {
+    send(res, 200, await importCustomerMeasurementSets(await readJson(req)))
     return
   }
   if (method === 'GET' && parts[0] === 'customers' && parts[1] && parts.length === 2) {
@@ -169,7 +174,7 @@ const server = createServer((req, res) => {
   })
 })
 
-await ensureSeed()
+if (process.env.SEED_DEMO_DATA === 'true') await ensureSeed()
 server.listen(port, () => {
   console.log(`Tailor API listening on http://localhost:${port}`)
 })
