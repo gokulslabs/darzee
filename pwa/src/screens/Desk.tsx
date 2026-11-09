@@ -1046,6 +1046,17 @@ export function Person() {
           <p>{recordedPoints(set.label, set).map(row => `${row.label} ${row.value}`).join(' · ') || 'No points saved'}</p>
         </div>
       ))}
+      {(customer.customMeasurementSets ?? []).map(set => (
+        <div className="white-card" key={set.id}>
+          <b>{set.garment}</b>
+          {set.measurements.map((measurement, index) => (
+            <p key={`${measurement.label}-${index}`}>{measurement.label} · {measurement.value}</p>
+          ))}
+        </div>
+      ))}
+      {customer.measurements.length === 0 && (customer.customMeasurementSets ?? []).length === 0 ? (
+        <p className="muted">No measurements saved for this customer.</p>
+      ) : null}
       <h2>Items due</h2>
       {own.map(order => (
         <Link className="item-card" key={order.id} to={`/orders/${order.id}`}>
