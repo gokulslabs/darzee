@@ -6,6 +6,8 @@ import { useShop } from '../state/ShopContext.tsx'
 export function Customers() {
   const { customers } = useShop()
   const [query, setQuery] = useState('')
+  const [page, setPage] = useState(0)
+  const pageSize = 30
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     if (!needle) return customers
@@ -13,6 +15,8 @@ export function Customers() {
       [customer.name, customer.city, customer.phone].join(' ').toLowerCase().includes(needle),
     )
   }, [customers, query])
+  const pageCount = Math.ceil(filtered.length / pageSize)
+  const visible = filtered.slice(page * pageSize, (page + 1) * pageSize)
 
   return (
     <>
@@ -23,9 +27,16 @@ export function Customers() {
         </div>
         <Link className="btn" to="/customers/new">Add customer</Link>
       </div>
-      <input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, city, or phone" />
+      <input className="search" value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder="Search name, city, or phone" />
+      <div className="customer-pagebar">
+        <span className="muted">{filtered.length ? `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, filtered.length)} of ${filtered.length}` : '0 customers'}</span>
+        <div className="actions">
+          <button className="btn quiet" disabled={page === 0} onClick={() => setPage(value => value - 1)}>Previous</button>
+          <button className="btn quiet" disabled={page + 1 >= pageCount} onClick={() => setPage(value => value + 1)}>Next</button>
+        </div>
+      </div>
       <div className="section">
-        {filtered.map(customer => (
+        {visible.map(customer => (
           <Link className="row" key={customer.id} to={`/customers/${customer.id}`}>
             <span>
               <b>{customer.name}</b>
