@@ -79,8 +79,9 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = pathOf(req)
   const parts = path.split('/').filter(Boolean)
   const method = req.method ?? 'GET'
+  const isBrowserNavigation = method === 'GET' && (req.headers.accept ?? '').includes('text/html')
 
-  const apiPath = path === '/health' || path === '/customers'
+  const apiPath = path === '/health' || (path === '/customers' && !isBrowserNavigation)
     || path === '/orders' || path.startsWith('/orders/') || path === '/staff'
     || path === '/inventory' || path.startsWith('/inventory/') || path.startsWith('/imports/')
   if (method === 'GET' && !apiPath) {
