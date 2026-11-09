@@ -1,17 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, ApiError, isOffline, type NewCustomerBody } from '../api/client.ts'
+import { api, ApiError, type NewCustomerBody } from '../api/client.ts'
 import {
   balanceOf,
-  createSeed,
-  nextStage,
-  todayIso,
   type Customer,
   type Measurement,
   type Order,
   type PayMethod,
 } from '../data/shop.ts'
 
-type Source = 'api' | 'local'
+type Source = 'api'
 
 type ShopValue = {
   ready: boolean
@@ -31,7 +28,7 @@ const ShopContext = createContext<ShopValue | null>(null)
 export function ShopProvider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [orders, setOrders] = useState<Order[]>([])
-  const [source, setSource] = useState<Source>('local')
+  const [source] = useState<Source>('api')
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const sourceRef = useRef(source)
@@ -44,21 +41,11 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       const [nextCustomers, nextOrders] = await Promise.all([api.customers(), api.orders()])
       setCustomers(nextCustomers)
       setOrders(nextOrders)
-      setSource('api')
       setLoadError(null)
     } catch (error) {
-      if (error instanceof ApiError) {
-        setCustomers([])
-        setOrders([])
-        setSource('api')
-        setLoadError(error.message)
-      } else {
-        const seed = createSeed()
-        setCustomers(seed.customers)
-        setOrders(seed.orders)
-        setSource('local')
-        setLoadError(null)
-      }
+      setCustomers([])
+      setOrders([])
+      setLoadError(error instanceof ApiError ? error.message : 'The server could not be reached. Check your connection and reload.')
     } finally {
       setReady(true)
     }
@@ -69,110 +56,27 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   }, [refresh])
 
   const addCustomer = async (input: NewCustomerBody) => {
-    if (sourceRef.current === 'api') {
-      try {
-        const created = await api.createCustomer(input)
-        setCustomers(current => [...current, created].sort((a, b) => a.name.localeCompare(b.name)))
-        return created
-      } catch (error) {
-        if (!isOffline(error)) throw error
-        setSource('local')
-      }
-    }
-    const created: Customer = {
-      id: `c_${Date.now()}`,
-      name: input.name.trim(),
-      phone: input.phone.trim(),
-      city: input.city.trim(),
-      age: null,
-      gender: '',
-      measurements: input.measurement
-        ? [{ ...input.measurement, id: `m_${Date.now()}`, recordedOn: todayIso() }]
-        : [],
-    }
+    const created = await api.createCustomer(input)
     setCustomers(current => [...current, created].sort((a, b) => a.name.localeCompare(b.name)))
     return created
   }
 
   const addMeasurement = async (customerId: string, measurement: Omit<Measurement, 'id' | 'recordedOn'>) => {
-    if (sourceRef.current === 'api') {
-      try {
-        const updated = await api.addMeasurement(customerId, measurement)
-        setCustomers(current => current.map(customer => (customer.id === customerId ? updated : customer)))
-        return
-      } catch (error) {
-        if (!isOffline(error)) throw error
-        setSource('local')
-      }
-    }
-    setCustomers(current =>
-      current.map(customer =>
-        customer.id === customerId
-          ? {
-              ...customer,
-              measurements: [
-                { ...measurement, id: `m_${Date.now()}`, recordedOn: todayIso() },
-                ...customer.measurements,
-              ],
-            }
-          : customer,
-      ),
-    )
+    const updated = await api.addMeasurement(customerId, measurement)
+    setCustomers(current => current.map(customer => (customer.id === customerId ? updated : customer)))
   }
 
   const advanceStage = async (orderId: string) => {
-    if (sourceRef.current === 'api') {
-      try {
-        const updated = await api.advance(orderId)
-        setOrders(current => current.map(order => (order.id === orderId ? updated : order)))
-        return
-      } catch (error) {
-        if (!isOffline(error)) throw error
-        setSource('local')
-      }
-    }
-    setOrders(current =>
-      current.map(order => {
-        if (order.id !== orderId) return order
-        const stage = nextStage(order.stage)
-        return stage ? { ...order, stage } : order
-      }),
-    )
+    const updated = await api.advance(orderId)
+    setOrders(current => current.map(order => (order.id === orderId ? updated : order)))
   }
 
   const recordPayment = async (orderId: string, input: { amount: number; method: PayMethod; note: string }) => {
     const order = ordersRef.current.find(item => item.id === orderId)
     if (!order) throw new Error('Order not found.')
     if (input.amount > balanceOf(order)) throw new Error('That is more than the balance.')
-    if (sourceRef.current === 'api') {
-      try {
-        const updated = await api.pay(orderId, input)
-        setOrders(current => current.map(item => (item.id === orderId ? updated : item)))
-        return
-      } catch (error) {
-        if (!isOffline(error)) throw error
-        setSource('local')
-      }
-    }
-    setOrders(current =>
-      current.map(item =>
-        item.id === orderId
-          ? {
-              ...item,
-              payments: [
-                ...item.payments,
-                {
-                  id: `p_${Date.now()}`,
-                  amount: input.amount,
-                  date: todayIso(),
-                  method: input.method,
-                  note: input.note,
-                },
-              ],
-            }
-          : item,
-      ),
-    )
+    const updated = await api.pay(orderId, input)
+    setOrders(current => current.map(item => (item.id === orderId ? updated : item)))
   }
 
   return (

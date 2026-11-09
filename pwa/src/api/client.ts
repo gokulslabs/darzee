@@ -1,6 +1,6 @@
 import type { ClothRoll, Customer, Measurement, OrderView, PayMethod, StaffMember, StockMove } from '../data/shop.ts'
 
-export const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '')
+export const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:4000')).replace(/\/$/, '')
 
 export class ApiError extends Error {
   status: number

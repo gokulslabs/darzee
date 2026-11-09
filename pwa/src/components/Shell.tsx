@@ -52,7 +52,7 @@ function TabIcon({ name }: { name: (typeof tabs)[number]['icon'] }) {
 }
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { ready, source, loadError } = useShop()
+  const { ready, loadError } = useShop()
   const { theme } = useSession()
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -65,7 +65,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </header>
         <main className="content">
           {loadError ? <p className="error">{loadError}</p> : null}
-          {ready && source === 'local' ? (
+          {ready && loadError ? (
             <p className="banner">The stitching floor is offline. Showing the copy kept on this device.</p>
           ) : null}
           {ready ? children : <p className="kicker">Opening the floor…</p>}
