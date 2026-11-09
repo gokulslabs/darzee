@@ -1003,18 +1003,30 @@ function useRolls() {
 export function People() {
   const { customers, orders } = useShop()
   const [query, setQuery] = useState('')
+  const [page, setPage] = useState(0)
+  const pageSize = 30
   const rows = customers.filter(customer => customer.name.toLowerCase().includes(query.trim().toLowerCase()))
+  const pageCount = Math.ceil(rows.length / pageSize)
+  const visibleRows = rows.slice(page * pageSize, (page + 1) * pageSize)
   return (
     <section>
       <div className="page-head"><h1>Customers</h1><Link className="blue-btn" to="/customers/new">Add customer</Link></div>
-      <input className="search" value={query} placeholder="Search" onChange={event => setQuery(event.target.value)} />
-      {rows.map(customer => (
+      <input className="search" value={query} placeholder="Search" onChange={event => { setQuery(event.target.value); setPage(0) }} />
+      <div className="page-head">
+        <span className="muted">{rows.length ? `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, rows.length)} of ${rows.length} customers` : '0 customers'}</span>
+        <div className="actions">
+          <button className="blue-btn quiet" type="button" disabled={page === 0} onClick={() => setPage(value => value - 1)}>Previous</button>
+          <button className="blue-btn quiet" type="button" disabled={page + 1 >= pageCount} onClick={() => setPage(value => value + 1)}>Next</button>
+        </div>
+      </div>
+      {visibleRows.map(customer => (
         <Link className="item-card" key={customer.id} to={`/customers/${customer.id}`}>
           <b>{customer.name}</b>
           <p>{customer.phone} · {customer.city}</p>
           <p className="muted">{orders.filter(order => order.customerId === customer.id).length} orders</p>
         </Link>
       ))}
+      {rows.length === 0 ? <p className="muted">No customers match that search.</p> : null}
     </section>
   )
 }
