@@ -1084,30 +1084,22 @@ export function Person() {
             return <div className="white-card" key={set.id}>
               <b>{set.label}</b>
               {values.length > 0
-                ? values.map(row => <p key={row.label}>{row.label} · {row.value} {unit}</p>)
+                ? <div className="measurement-points">{values.map(row => <p key={row.label}>{row.label} · {row.value} {unit}</p>)}</div>
                 : <p className="muted">No measurements saved.</p>}
             </div>
           })}
           {customSets.map(set => (
             <div className="white-card" key={set.id}>
               <b>{set.garment}</b>
-              {set.measurements.map((measurement, index) => (
+              <div className="measurement-points">{set.measurements.map((measurement, index) => (
                 <p key={`${measurement.label}-${index}`}>{measurement.label} · {measurement.value}</p>
-              ))}
+              ))}</div>
             </div>
           ))}
         </>
       ) : (
         <p className="muted">No measurements saved for this customer.</p>
       )}
-      <h2>Items due</h2>
-      {own.map(order => (
-        <Link className="item-card" key={order.id} to={`/orders/${order.id}`}>
-          <div className="item-top"><b>{order.garment}</b>{order.urgent ? <span className="urgent">Urgent</span> : null}</div>
-          <p>{order.itemStatus} · {order.assignee || 'Unassigned'}</p>
-          <p>Trial {order.fittingDate ? formatDate(order.fittingDate) : '—'} · Delivery {formatDate(order.dueDate)}</p>
-        </Link>
-      ))}
     </section>
   )
 }
