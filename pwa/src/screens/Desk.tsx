@@ -367,6 +367,28 @@ const PROFILE_MEASUREMENT_FIELDS = [
   ['handRight', 'Right hand'], ['handLeft', 'Left hand'],
 ] as const
 
+function removeRepeatedMeasurementBlocks(rows: Array<{ label: string; value: string }>) {
+  const compacted = [...rows]
+  let removedBlock = true
+  while (removedBlock) {
+    removedBlock = false
+    for (let start = 0; start < compacted.length && !removedBlock; start += 1) {
+      for (let size = 2; start + size * 2 <= compacted.length; size += 1) {
+        const blockRepeats = compacted.slice(start, start + size).every((measurement, index) => {
+          const repeated = compacted[start + size + index]
+          return measurement.label === repeated.label && measurement.value === repeated.value
+        })
+        if (blockRepeats) {
+          compacted.splice(start + size, size)
+          removedBlock = true
+          break
+        }
+      }
+    }
+  }
+  return compacted
+}
+
 const emptyPoints = (): Record<MeasureKey, string> => ({
   waist: '', seat: '', hip: '', calf: '', bottom: '', length: '', shoulder: '', chest: '', biceps: '', neck: '', handRight: '', handLeft: '',
 })
@@ -1054,7 +1076,19 @@ export function Person() {
   ].map(name => name.trim()).filter(Boolean)
   const garmentOptions = [...new Map(garmentNames.map(name => [name.toLowerCase(), name])).values()]
   const activeGarment = garmentOptions.find(name => name.toLowerCase() === selectedGarment.toLowerCase()) ?? garmentOptions[0] ?? ''
-  const customSets = customMeasurementSets.filter(set => set.garment.trim().toLowerCase() === activeGarment.toLowerCase())
+  const seenCustomSetSignatures = new Set<string>()
+  const customSets = customMeasurementSets
+    .filter(set => set.garment.trim().toLowerCase() === activeGarment.toLowerCase())
+    .map(set => ({ ...set, measurements: removeRepeatedMeasurementBlocks(set.measurements) }))
+    .filter(set => {
+      const signature = JSON.stringify([
+        set.garment.trim().toLowerCase(),
+        set.measurements.map(measurement => [measurement.label.trim().toLowerCase(), measurement.value.trim()]),
+      ])
+      if (seenCustomSetSignatures.has(signature)) return false
+      seenCustomSetSignatures.add(signature)
+      return true
+    })
   const numericSets = customer.measurements.filter(set => set.label.trim().toLowerCase() === activeGarment.toLowerCase())
   return (
     <section>
