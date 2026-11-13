@@ -360,6 +360,13 @@ function recordedPoints(garment: string, source: { unit?: string } & Partial<Rec
     .map(([key, label]) => ({ label, value: `${source[key]} ${unit}` }))
 }
 
+const PROFILE_MEASUREMENT_FIELDS = [
+  ['chest', 'Chest'], ['waist', 'Waist'], ['hip', 'Hip'], ['shoulder', 'Shoulder'],
+  ['sleeve', 'Sleeve'], ['neck', 'Neck'], ['inseam', 'Inseam'], ['length', 'Length'],
+  ['seat', 'Seat'], ['calf', 'Calf'], ['bottom', 'Bottom'], ['biceps', 'Biceps'],
+  ['handRight', 'Right hand'], ['handLeft', 'Left hand'],
+] as const
+
 const emptyPoints = (): Record<MeasureKey, string> => ({
   waist: '', seat: '', hip: '', calf: '', bottom: '', length: '', shoulder: '', chest: '', biceps: '', neck: '', handRight: '', handLeft: '',
 })
@@ -1034,11 +1041,21 @@ export function People() {
 export function Person() {
   const { id } = useParams()
   const { customers, orders } = useShop()
+  const [selectedGarment, setSelectedGarment] = useState('')
   const customer = customers.find(item => item.id === id)
   if (!customer) return <p>This customer is not in the book.</p>
   const own = orders.filter(order => order.customerId === customer.id)
   const pending = own.reduce((sum, order) => sum + Math.max(0, balanceOf(order)), 0)
   const revenue = own.reduce((sum, order) => sum + paidOf(order), 0)
+  const customMeasurementSets = customer.customMeasurementSets ?? []
+  const garmentNames = [
+    ...customMeasurementSets.map(set => set.garment),
+    ...customer.measurements.map(set => set.label),
+  ].map(name => name.trim()).filter(Boolean)
+  const garmentOptions = [...new Map(garmentNames.map(name => [name.toLowerCase(), name])).values()]
+  const activeGarment = garmentOptions.find(name => name.toLowerCase() === selectedGarment.toLowerCase()) ?? garmentOptions[0] ?? ''
+  const customSets = customMeasurementSets.filter(set => set.garment.trim().toLowerCase() === activeGarment.toLowerCase())
+  const numericSets = customer.measurements.filter(set => set.label.trim().toLowerCase() === activeGarment.toLowerCase())
   return (
     <section>
       <div className="page-head">
@@ -1052,23 +1069,37 @@ export function Person() {
         <div className="count">Orders<br />{own.length}</div>
       </div>
       <h2>Measurements</h2>
-      {customer.measurements.map(set => (
-        <div className="white-card" key={set.id}>
-          <b>{set.label}</b>
-          <p>{recordedPoints(set.label, set).map(row => `${row.label} ${row.value}`).join(' · ') || 'No points saved'}</p>
-        </div>
-      ))}
-      {(customer.customMeasurementSets ?? []).map(set => (
-        <div className="white-card" key={set.id}>
-          <b>{set.garment}</b>
-          {set.measurements.map((measurement, index) => (
-            <p key={`${measurement.label}-${index}`}>{measurement.label} · {measurement.value}</p>
+      {garmentOptions.length > 0 ? (
+        <>
+          <label className="field"><span>Choose garment</span>
+            <select aria-label="Choose garment" value={activeGarment} onChange={event => setSelectedGarment(event.target.value)}>
+              {garmentOptions.map(garment => <option key={garment} value={garment}>{garment}</option>)}
+            </select>
+          </label>
+          {numericSets.map(set => {
+            const unit = set.unit === 'cm' ? 'cm' : 'inch'
+            const values = PROFILE_MEASUREMENT_FIELDS
+              .map(([key, label]) => ({ label, value: set[key] }))
+              .filter(row => Number(row.value) > 0)
+            return <div className="white-card" key={set.id}>
+              <b>{set.label}</b>
+              {values.length > 0
+                ? values.map(row => <p key={row.label}>{row.label} · {row.value} {unit}</p>)
+                : <p className="muted">No measurements saved.</p>}
+            </div>
+          })}
+          {customSets.map(set => (
+            <div className="white-card" key={set.id}>
+              <b>{set.garment}</b>
+              {set.measurements.map((measurement, index) => (
+                <p key={`${measurement.label}-${index}`}>{measurement.label} · {measurement.value}</p>
+              ))}
+            </div>
           ))}
-        </div>
-      ))}
-      {customer.measurements.length === 0 && (customer.customMeasurementSets ?? []).length === 0 ? (
+        </>
+      ) : (
         <p className="muted">No measurements saved for this customer.</p>
-      ) : null}
+      )}
       <h2>Items due</h2>
       {own.map(order => (
         <Link className="item-card" key={order.id} to={`/orders/${order.id}`}>
