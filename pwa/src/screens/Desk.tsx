@@ -17,6 +17,7 @@ import {
   todayIso,
   type MeasureKey,
   type ClothRoll,
+  type Customer,
   type Order,
   type PayMethod,
   type StaffMember,
@@ -366,6 +367,10 @@ const PROFILE_MEASUREMENT_FIELDS = [
   ['seat', 'Seat'], ['calf', 'Calf'], ['bottom', 'Bottom'], ['biceps', 'Biceps'],
   ['handRight', 'Right hand'], ['handLeft', 'Left hand'],
 ] as const
+
+function customerPhoneKey(customer: Customer) {
+  return customer.phone.replace(/\D/g, '') || customer.id
+}
 
 function removeRepeatedMeasurementBlocks(rows: Array<{ label: string; value: string }>) {
   const compacted = [...rows]
@@ -1034,7 +1039,14 @@ export function People() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const pageSize = 30
-  const rows = customers.filter(customer => customer.name.toLowerCase().includes(query.trim().toLowerCase()))
+  const groups = new Map<string, Customer[]>()
+  customers.forEach(customer => {
+    const key = customerPhoneKey(customer)
+    groups.set(key, [...(groups.get(key) ?? []), customer])
+  })
+  const rows = [...groups.values()].filter(group => group.some(customer =>
+    customer.name.toLowerCase().includes(query.trim().toLowerCase()) || customer.phone.includes(query.trim()),
+  ))
   const pageCount = Math.ceil(rows.length / pageSize)
   const visibleRows = rows.slice(page * pageSize, (page + 1) * pageSize)
   return (
@@ -1048,11 +1060,12 @@ export function People() {
           <button className="blue-btn quiet" type="button" disabled={page + 1 >= pageCount} onClick={() => setPage(value => value + 1)}>Next</button>
         </div>
       </div>
-      {visibleRows.map(customer => (
-        <Link className="item-card" key={customer.id} to={`/customers/${customer.id}`}>
-          <b>{customer.name}</b>
-          <p>{customer.phone} · {customer.city}</p>
-          <p className="muted">{orders.filter(order => order.customerId === customer.id).length} orders</p>
+      {visibleRows.map(group => (
+        <Link className="item-card" key={group[0].id} to={`/customers/${group[0].id}`}>
+          <b>{group[0].name}</b>
+          <p>{group[0].phone} · {group[0].city}</p>
+          {group.length > 1 ? <p className="muted">Also listed as {group.slice(1).map(person => person.name).join(', ')}</p> : null}
+          <p className="muted">{orders.filter(order => group.some(person => person.id === order.customerId)).length} orders</p>
         </Link>
       ))}
       {rows.length === 0 ? <p className="muted">No customers match that search.</p> : null}
@@ -1066,21 +1079,25 @@ export function Person() {
   const [selectedGarment, setSelectedGarment] = useState('')
   const customer = customers.find(item => item.id === id)
   if (!customer) return <p>This customer is not in the book.</p>
-  const own = orders.filter(order => order.customerId === customer.id)
+  const relatedCustomers = customers.filter(item => customerPhoneKey(item) === customerPhoneKey(customer))
+  const relatedIds = new Set(relatedCustomers.map(item => item.id))
+  const own = orders.filter(order => relatedIds.has(order.customerId))
   const pending = own.reduce((sum, order) => sum + Math.max(0, balanceOf(order)), 0)
   const revenue = own.reduce((sum, order) => sum + paidOf(order), 0)
-  const customMeasurementSets = customer.customMeasurementSets ?? []
+  const customMeasurementSets = relatedCustomers.flatMap(item => item.customMeasurementSets ?? [])
+  const numericMeasurements = relatedCustomers.flatMap(item => item.measurements)
   const garmentNames = [
     ...customMeasurementSets.map(set => set.garment),
-    ...customer.measurements.map(set => set.label),
+    ...numericMeasurements.map(set => set.label),
   ].map(name => name.trim()).filter(Boolean)
   const garmentOptions = [...new Map(garmentNames.map(name => [name.toLowerCase(), name])).values()]
   const activeGarment = garmentOptions.find(name => name.toLowerCase() === selectedGarment.toLowerCase()) ?? garmentOptions[0] ?? ''
   const seenCustomSetSignatures = new Set<string>()
   const customSets = customMeasurementSets
     .filter(set => set.garment.trim().toLowerCase() === activeGarment.toLowerCase())
-    .map(set => ({ ...set, measurements: removeRepeatedMeasurementBlocks(set.measurements) }))
+    .map(set => set.id.includes('_pdf_') ? set : ({ ...set, measurements: removeRepeatedMeasurementBlocks(set.measurements) }))
     .filter(set => {
+      if (set.id.includes('_pdf_')) return true
       const signature = JSON.stringify([
         set.garment.trim().toLowerCase(),
         set.measurements.map(measurement => [measurement.label.trim().toLowerCase(), measurement.value.trim()]),
@@ -1089,7 +1106,7 @@ export function Person() {
       seenCustomSetSignatures.add(signature)
       return true
     })
-  const numericSets = customer.measurements.filter(set => set.label.trim().toLowerCase() === activeGarment.toLowerCase())
+  const numericSets = numericMeasurements.filter(set => set.label.trim().toLowerCase() === activeGarment.toLowerCase())
   return (
     <section>
       <div className="page-head">
@@ -1097,6 +1114,7 @@ export function Person() {
         <Link className="blue-btn" to="/orders/new">Create order</Link>
       </div>
       <p>{customer.phone} · {customer.city} · {customer.gender || 'Gender not set'}{customer.age ? ` · ${customer.age}` : ''}</p>
+      {relatedCustomers.length > 1 ? <p className="muted">Also listed as {relatedCustomers.filter(item => item.id !== customer.id).map(item => item.name).join(', ')}</p> : null}
       <div className="count-row">
         <div className="count">Pending<br />{formatInr(pending)}</div>
         <div className="count">Revenue<br />{formatInr(revenue)}</div>
@@ -1124,7 +1142,7 @@ export function Person() {
           })}
           {customSets.map(set => (
             <div className="white-card" key={set.id}>
-              <b>{set.garment}</b>
+              <b>{set.garment}{set.id.includes('_pdf_') ? ` · Order ${set.id.split('_pdf_')[1]}` : ''}</b>
               <div className="measurement-points">{set.measurements.map((measurement, index) => (
                 <p key={`${measurement.label}-${index}`}>{measurement.label} · {measurement.value}</p>
               ))}</div>
