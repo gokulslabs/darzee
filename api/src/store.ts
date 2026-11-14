@@ -59,6 +59,7 @@ type CustomerRow = {
   name: string
   phone: string
   city: string
+  book_no?: string | null
   age?: number | null
   gender?: string | null
   email?: string | null
@@ -104,7 +105,7 @@ type OrderRow = {
 
 const MEASUREMENT_COLUMNS =
   'id, label, chest, waist, hip, shoulder, sleeve, neck, inseam, length, seat, calf, bottom_bell, biceps, hand_right, hand_left, unit, note, recorded_on'
-const CUSTOMER_SELECT = `id, name, phone, city, age, gender, email, birth_date, landmark, created_at, measurements (${MEASUREMENT_COLUMNS}), custom_measurement_sets:customer_measurement_sets (id, source_customer_id, garment, measurements)`
+const CUSTOMER_SELECT = `id, name, phone, city, book_no, age, gender, email, birth_date, landmark, created_at, measurements (${MEASUREMENT_COLUMNS}), custom_measurement_sets:customer_measurement_sets (id, source_customer_id, garment, measurements)`
 const ORDER_SELECT =
   'id, order_no, customer_id, garment, due_date, fitting_date, price, stage, notes, work_type, urgent, item_status, assignee, stitch_note, cloth, sale_mode, payments (id, amount, paid_on, method, note)'
 
@@ -162,6 +163,7 @@ function mapCustomer(row: CustomerRow): Customer {
     name: row.name,
     phone: row.phone,
     city: row.city,
+    bookNo: row.book_no ?? '',
     age: row.age ?? null,
     gender: row.gender ?? '',
     email: row.email ?? '',

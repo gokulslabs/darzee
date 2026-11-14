@@ -47,6 +47,7 @@ export type Customer = {
   name: string
   phone: string
   city: string
+  bookNo?: string
   age: number | null
   gender: string
   email?: string

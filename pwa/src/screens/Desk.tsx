@@ -1100,7 +1100,7 @@ export function Person() {
         <h1>{customer.name}</h1>
         <Link className="blue-btn" to="/orders/new">Create order</Link>
       </div>
-      <p>{customer.phone} · {customer.city} · {customer.gender || 'Gender not set'}{customer.age ? ` · ${customer.age}` : ''}</p>
+      <p>{customer.phone} · {customer.city}{customer.bookNo ? ` · ${/^book\b/i.test(customer.bookNo) ? customer.bookNo : `Book ${customer.bookNo}`}` : ''}{customer.age ? ` · ${customer.age}` : ''}</p>
       <div className="count-row">
         <div className="count">Pending<br />{formatInr(pending)}</div>
         <div className="count">Revenue<br />{formatInr(revenue)}</div>
