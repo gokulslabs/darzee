@@ -17,7 +17,6 @@ import {
   todayIso,
   type MeasureKey,
   type ClothRoll,
-  type Customer,
   type Order,
   type PayMethod,
   type StaffMember,
@@ -367,10 +366,6 @@ const PROFILE_MEASUREMENT_FIELDS = [
   ['seat', 'Seat'], ['calf', 'Calf'], ['bottom', 'Bottom'], ['biceps', 'Biceps'],
   ['handRight', 'Right hand'], ['handLeft', 'Left hand'],
 ] as const
-
-function customerPhoneKey(customer: Customer) {
-  return customer.phone.replace(/\D/g, '') || customer.id
-}
 
 function removeRepeatedMeasurementBlocks(rows: Array<{ label: string; value: string }>) {
   const compacted = [...rows]
@@ -1039,14 +1034,9 @@ export function People() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const pageSize = 30
-  const groups = new Map<string, Customer[]>()
-  customers.forEach(customer => {
-    const key = customerPhoneKey(customer)
-    groups.set(key, [...(groups.get(key) ?? []), customer])
-  })
-  const rows = [...groups.values()].filter(group => group.some(customer =>
+  const rows = customers.filter(customer =>
     customer.name.toLowerCase().includes(query.trim().toLowerCase()) || customer.phone.includes(query.trim()),
-  ))
+  )
   const pageCount = Math.ceil(rows.length / pageSize)
   const visibleRows = rows.slice(page * pageSize, (page + 1) * pageSize)
   return (
@@ -1060,15 +1050,13 @@ export function People() {
           <button className="blue-btn quiet" type="button" disabled={page + 1 >= pageCount} onClick={() => setPage(value => value + 1)}>Next</button>
         </div>
       </div>
-      {visibleRows.map(group => {
-        const listedPerson = group.find(person => person.name.toLowerCase().includes(query.trim().toLowerCase())) ?? group[0]
-        return <Link className="item-card" key={group[0].id} to={`/customers/${listedPerson.id}`}>
-          <b>{listedPerson.name}</b>
-          <p>{listedPerson.phone} · {listedPerson.city}</p>
-          {group.length > 1 ? <p className="muted">{group.length} names use this phone</p> : null}
-          <p className="muted">{orders.filter(order => group.some(person => person.id === order.customerId)).length} orders</p>
+      {visibleRows.map(customer => (
+        <Link className="item-card" key={customer.id} to={`/customers/${customer.id}`}>
+          <b>{customer.name}</b>
+          <p>{customer.phone} · {customer.city}</p>
+          <p className="muted">{orders.filter(order => order.customerId === customer.id).length} orders</p>
         </Link>
-      })}
+      ))}
       {rows.length === 0 ? <p className="muted">No customers match that search.</p> : null}
     </section>
   )
@@ -1078,16 +1066,13 @@ export function Person() {
   const { id } = useParams()
   const { customers, orders } = useShop()
   const [selectedGarment, setSelectedGarment] = useState('')
-  const [selectedPersonId, setSelectedPersonId] = useState('')
   const customer = customers.find(item => item.id === id)
   if (!customer) return <p>This customer is not in the book.</p>
-  const relatedCustomers = customers.filter(item => customerPhoneKey(item) === customerPhoneKey(customer))
-  const activePerson = relatedCustomers.find(item => item.id === selectedPersonId) ?? customer
-  const own = orders.filter(order => order.customerId === activePerson.id)
+  const own = orders.filter(order => order.customerId === customer.id)
   const pending = own.reduce((sum, order) => sum + Math.max(0, balanceOf(order)), 0)
   const revenue = own.reduce((sum, order) => sum + paidOf(order), 0)
-  const customMeasurementSets = activePerson.customMeasurementSets ?? []
-  const numericMeasurements = activePerson.measurements
+  const customMeasurementSets = customer.customMeasurementSets ?? []
+  const numericMeasurements = customer.measurements
   const garmentNames = [
     ...customMeasurementSets.map(set => set.garment),
     ...numericMeasurements.map(set => set.label),
@@ -1112,15 +1097,10 @@ export function Person() {
   return (
     <section>
       <div className="page-head">
-        <h1>{activePerson.name}</h1>
+        <h1>{customer.name}</h1>
         <Link className="blue-btn" to="/orders/new">Create order</Link>
       </div>
-      <p>{activePerson.phone} · {activePerson.city} · {activePerson.gender || 'Gender not set'}{activePerson.age ? ` · ${activePerson.age}` : ''}</p>
-      {relatedCustomers.length > 1 ? <label className="field"><span>Name on this phone</span>
-        <select aria-label="Name on this phone" value={activePerson.id} onChange={event => { setSelectedPersonId(event.target.value); setSelectedGarment('') }}>
-          {relatedCustomers.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
-        </select>
-      </label> : null}
+      <p>{customer.phone} · {customer.city} · {customer.gender || 'Gender not set'}{customer.age ? ` · ${customer.age}` : ''}</p>
       <div className="count-row">
         <div className="count">Pending<br />{formatInr(pending)}</div>
         <div className="count">Revenue<br />{formatInr(revenue)}</div>
