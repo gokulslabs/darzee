@@ -1094,6 +1094,26 @@ export function Person() {
       return true
     })
   const numericSets = numericMeasurements.filter(set => set.label.trim().toLowerCase() === activeGarment.toLowerCase())
+  const shareText = [
+    `${customer.name} · ${activeGarment} measurements`,
+    customer.phone,
+    customer.bookNo ? (/^book\b/i.test(customer.bookNo) ? customer.bookNo : `Book ${customer.bookNo}`) : '',
+    ...numericSets.flatMap(set => {
+      const unit = set.unit === 'cm' ? 'cm' : 'inch'
+      return [
+        '',
+        set.label,
+        ...PROFILE_MEASUREMENT_FIELDS
+          .filter(([key]) => Number(set[key]) > 0)
+          .map(([key, label]) => `${label}: ${set[key]} ${unit}`),
+      ]
+    }),
+    ...customSets.flatMap(set => [
+      '',
+      `${set.garment}${set.id.includes('_pdf_') ? ` · Order ${set.id.split('_pdf_')[1]}` : ''}`,
+      ...set.measurements.map(measurement => `${measurement.label}: ${measurement.value}`),
+    ]),
+  ].filter((line, index, lines) => line || (index > 0 && lines[index - 1] !== '')).join('\n')
   return (
     <section>
       <div className="page-head">
@@ -1114,6 +1134,11 @@ export function Person() {
               {garmentOptions.map(garment => <option key={garment} value={garment}>{garment}</option>)}
             </select>
           </label>
+          {(numericSets.length > 0 || customSets.length > 0) ? (
+            <a className="blue-btn quiet" href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer">
+              Share {activeGarment} on WhatsApp
+            </a>
+          ) : null}
           {numericSets.map(set => {
             const unit = set.unit === 'cm' ? 'cm' : 'inch'
             const values = PROFILE_MEASUREMENT_FIELDS
